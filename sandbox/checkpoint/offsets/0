@@ -1,0 +1,3 @@
+v1
+{"batchWatermarkMs":0,"batchTimestampMs":1525404355014,"conf":{"spark.sql.shuffle.partitions":"200"}}
+{"data":{"2":246470,"5":246456,"4":246166,"7":245955,"1":245954,"3":246740,"6":246188,"0":246367}}

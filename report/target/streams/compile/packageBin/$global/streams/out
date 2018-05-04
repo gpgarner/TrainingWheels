@@ -1,0 +1,17 @@
+[0m[[0m[0minfo[0m] [0m[0mPackaging /home/ubuntu/report/target/scala-2.11/report_2.11-1.0.jar ...[0m
+[0m[[0m[0mdebug[0m] [0m[0mInput file mappings:[0m
+[0m[[0m[0mdebug[0m] [0m[0m	com/report/src/main/scala/ReportExample$.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/report/target/scala-2.11/classes/com/report/src/main/scala/ReportExample$.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	com[0m
+[0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/report/target/scala-2.11/classes/com[0m
+[0m[[0m[0mdebug[0m] [0m[0m	com/report/src/main/scala[0m
+[0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/report/target/scala-2.11/classes/com/report/src/main/scala[0m
+[0m[[0m[0mdebug[0m] [0m[0m	com/report[0m
+[0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/report/target/scala-2.11/classes/com/report[0m
+[0m[[0m[0mdebug[0m] [0m[0m	com/report/src/main[0m
+[0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/report/target/scala-2.11/classes/com/report/src/main[0m
+[0m[[0m[0mdebug[0m] [0m[0m	com/report/src[0m
+[0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/report/target/scala-2.11/classes/com/report/src[0m
+[0m[[0m[0mdebug[0m] [0m[0m	com/report/src/main/scala/ReportExample.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/report/target/scala-2.11/classes/com/report/src/main/scala/ReportExample.class[0m
+[0m[[0m[0minfo[0m] [0m[0mDone packaging.[0m
