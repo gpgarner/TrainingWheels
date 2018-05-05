@@ -117,10 +117,10 @@ class  KafkaSink(topic:String, servers:String) extends ForeachWriter[(String, St
         .option("startingOffsets","earliest")
  	.load()
     
-    val df_string = fileStreamDf.selectExpr("CAST(key AS STRING)")
+    val df_string = fileStreamDf.selectExpr("CAST(value AS STRING)")
     
     var df = df_string.select(from_json(col("value"),schema).alias("data")).select("data.*")
-    
+ 
     val dfFilter0 = df
       .filter(col("CMTE_ID")!=="")
       .filter(col("NAME")!=="")
@@ -128,7 +128,9 @@ class  KafkaSink(topic:String, servers:String) extends ForeachWriter[(String, St
       .filter(col("TRANSACTION_DT")!=="")
       .filter(col("TRANSACTION_AMT")!=="")
       .filter(col("OTHER_ID")==="")
-    
+      .filter($"AMNDT_IND" rlike "[N]|[A]|[T]")
+      .filter($"RPT_TP" rlike "[1][2][C]|[1][2][G]|[1][2][P]|[1][2][R]|[1][2][S]|[3][0][D]|[3][0][G]|[3][0][P]|[3][0][R]|[3][0][S]|[6][0][D]|[A][D][J]|[C][A]|[M][1][0]|[M][1][1]|[M][2]|[M][3]|[M][4]|[M][5]|[M][6]|[M][7]|[M][8]|[M][9]|[M][Y]|[Q][1]|[Q][2]|[Q][3]|[T][E][R]|[Y][E]|[9][0][S]|[9][0][D]|[4][8][H]|[2][4][H]")
+      .filter(col("FILE_NUM")!=="")
 
     def dateFunc: (String => String) = {s => substring(s,4)}
     val myDateFunc = udf(dateFunc)
@@ -140,7 +142,7 @@ class  KafkaSink(topic:String, servers:String) extends ForeachWriter[(String, St
       .withColumn("YEAR", myDateFunc(dfFilter0("TRANSACTION_DT")).cast(IntegerType))
       .withColumn("TRANSACTION_AMT",dfFilter0("TRANSACTION_AMT").cast(IntegerType))
 
-    val dfAlter2 = dfAlter1
+   val dfAlter2 = dfAlter1
       .filter(col("YEAR")<=2018)
       .filter(col("YEAR")>=1980)
 
@@ -150,15 +152,16 @@ class  KafkaSink(topic:String, servers:String) extends ForeachWriter[(String, St
     
     dfAlter3.printSchema()
     
-    val groupies = dfAlter3.withWatermark("timestamp", "15 days").groupBy(window($"timestamp", "2 days", "1 days"),$"STATE").count()
-    
-    //val query0 = dfAlter3.select("CMTE_ID","NAME","STATE","ZIP_CODE","TRANSACTION_DT","YEAR","timestamp")  
-    //  .writeStream
-    //  .format("console")
-    //  .option("truncate","false")
-    //  .outputMode(OutputMode.Append())
-    //  .start()
-    //query0.awaitTermination() 
+    // val groupies = dfAlter3.groupBy(window($"timestamp", "10 days", "5 days"),$"STATE").count()
+    //val groupies = dfAlter3.withWatermark("timestamp", "10 days").groupBy(window($"timestamp", "10 days", "5 days"),$"STATE").count()
+    //groupies.printSchema()
+    val query0 = dfAlter3.select("CMTE_ID","AMNDT_IND","RPT_TP","FILE_NUM","NAME","STATE","ZIP_CODE","TRANSACTION_DT","YEAR","timestamp")  
+      .writeStream
+      .format("console")
+      .option("truncate","false")
+      .outputMode(OutputMode.Append())
+      .start()
+    query0.awaitTermination() 
     //val writer = new KafkaSink("dump","18.205.181.166:9092") 
     
     //val query1 = groupies
@@ -167,16 +170,16 @@ class  KafkaSink(topic:String, servers:String) extends ForeachWriter[(String, St
     //.outputMode("update")
     //.trigger(ProcessingTime("25 seconds"))
     //.start()
-    groupies.select(to_json(struct("window.start","window.end","STATE")).alias("key"),col("count").cast("string").alias("value")).printSchema()
-    val query = groupies.select(to_json(struct("window.start","window.end","STATE")).alias("key"),col("count").cast("string").alias("value"))
+    //groupies.select(to_json(struct("window.start","window.end","STATE")).alias("key"),col("count").cast("string").alias("value")).printSchema()
+    /*val query = groupies.select(to_json(struct("window.start","window.end","STATE")).alias("key"),col("count").cast("string").alias("value"))
       .writeStream
       .format("kafka")
       .option("kafka.bootstrap.servers", "localhost:9092")
       .option("topic", "dump")
-      .option("checkpointLocation", "/home/ubuntu/sandbox/checkpoint")
+      .option("checkpointLocation", "/home/ubuntu/repo/sandbox/checkpoint")
       .outputMode("complete")
       .start()
-    query.awaitTermination()
+    query.awaitTermination()*/
     //println(query.lastProgress)
   }
 }
