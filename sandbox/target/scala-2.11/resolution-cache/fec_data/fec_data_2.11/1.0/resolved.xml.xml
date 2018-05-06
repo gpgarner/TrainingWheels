@@ -4,7 +4,7 @@
 		module="fec_data_2.11"
 		revision="1.0"
 		status="integration"
-		publication="20180504232127"
+		publication="20180506040834"
 	>
 		<description>
 		fec_data
@@ -40,5 +40,6 @@
 		<dependency org="org.apache.kafka" name="kafka-streams" rev="0.10.2.0" conf="compile->default(compile)"/>
 		<dependency org="org.apache.kafka" name="kafka-clients" rev="0.10.2.0" conf="compile->default(compile)"/>
 		<dependency org="mysql" name="mysql-connector-java" rev="5.1.6" conf="compile->default(compile)"/>
+		<dependency org="org.postgresql" name="postgresql" rev="42.2.2" conf="compile->default(compile)"/>
 	</dependencies>
 </ivy-module>

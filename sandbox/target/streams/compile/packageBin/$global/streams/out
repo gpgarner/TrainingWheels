@@ -4,6 +4,8 @@
 [0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/repo/sandbox/target/scala-2.11/classes/com/sandbox/src/main/scala/FileStreamExample.class[0m
 [0m[[0m[0mdebug[0m] [0m[0m	com/sandbox/src/main/scala/FileStreamExample$$typecreator4$1.class[0m
 [0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/repo/sandbox/target/scala-2.11/classes/com/sandbox/src/main/scala/FileStreamExample$$typecreator4$1.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	com/sandbox/src/main/scala/FileStreamExample$JDBCSink$1.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/repo/sandbox/target/scala-2.11/classes/com/sandbox/src/main/scala/FileStreamExample$JDBCSink$1.class[0m
 [0m[[0m[0mdebug[0m] [0m[0m	com/sandbox[0m
 [0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/repo/sandbox/target/scala-2.11/classes/com/sandbox[0m
 [0m[[0m[0mdebug[0m] [0m[0m	com/sandbox/src/main/scala/FileStreamExample$.class[0m
@@ -26,6 +28,4 @@
 [0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/repo/sandbox/target/scala-2.11/classes/com[0m
 [0m[[0m[0mdebug[0m] [0m[0m	com/sandbox/src/main/scala[0m
 [0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/repo/sandbox/target/scala-2.11/classes/com/sandbox/src/main/scala[0m
-[0m[[0m[0mdebug[0m] [0m[0m	com/sandbox/src/main/scala/FileStreamExample$KafkaSink.class[0m
-[0m[[0m[0mdebug[0m] [0m[0m	  /home/ubuntu/repo/sandbox/target/scala-2.11/classes/com/sandbox/src/main/scala/FileStreamExample$KafkaSink.class[0m
 [0m[[0m[0minfo[0m] [0m[0mDone packaging.[0m

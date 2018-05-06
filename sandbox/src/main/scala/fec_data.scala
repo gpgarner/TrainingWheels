@@ -20,52 +20,9 @@ import org.apache.kafka.clients.producer._
 import org.apache.kafka.common._
 import org.apache.spark.sql.streaming.ProcessingTime
 
-
-/*class  KafkaSink(topic:String, servers:String) extends ForeachWriter[(String, String)] {
-   val kafkaProperties = new Properties()
-   kafkaProperties.put("bootstrap.servers", servers)
-   kafkaProperties.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
-   kafkaProperties.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
-   val results = new scala.collection.mutable.HashMap[String, String]
-   var producer: KafkaProducer[String, String] = _
-
-   def open(partitionId: Long,version: Long): Boolean = {
-     producer = new KafkaProducer(kafkaProperties)
-     true
-   }
-
-   def process(value: (String, String)): Unit = {
-       producer.send(new ProducerRecord(topic, value._1 + ":" + value._2))
-   }
-
-   def close(errorOrNull: Throwable): Unit = {
-     producer.close()
-   }
-}*/
+import java.sql.{Array=>SQLArray,_}
 
 object FileStreamExample {
-
-class  KafkaSink(topic:String, servers:String) extends ForeachWriter[(String, String)] {
-   val kafkaProperties = new Properties()
-   kafkaProperties.put("bootstrap.servers", servers)
-   kafkaProperties.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
-   kafkaProperties.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
-   val results = new scala.collection.mutable.HashMap[String, String]
-   var producer: KafkaProducer[String, String] = _
-
-   def open(partitionId: Long,version: Long): Boolean = {
-     producer = new KafkaProducer(kafkaProperties)
-     true
-   }
-
-   def process(value: (String, String)): Unit = {
-       producer.send(new ProducerRecord(topic, value._1 + ":" + value._2))
-   }
-
-   def close(errorOrNull: Throwable): Unit = {
-     producer.close()
-   }
-}
 
   def main(args: Array[String]): Unit = {
     //import sparkSession.implicits._
@@ -76,7 +33,30 @@ class  KafkaSink(topic:String, servers:String) extends ForeachWriter[(String, St
       .master("spark://18.205.181.166:7077")
       .appName("example")
       .getOrCreate()
+    
+    class  JDBCSink(url:String, user:String, pwd:String) extends org.apache.spark.sql.ForeachWriter[org.apache.spark.sql.Row] {
+      val driver = "org.postgresql.Driver"
+      var connection:Connection = _
+      var statement:Statement = _
+      
 
+      def open(partitionId: Long,version: Long): Boolean = {
+        Class.forName(driver)
+        connection =java.sql.DriverManager.getConnection(url, user, pwd)
+        statement = connection.createStatement
+        true
+      }
+
+      def process(value: org.apache.spark.sql.Row): Unit = {
+        statement.executeUpdate("INSERT INTO public.test(col1, col2) " + "VALUES ('" + value(0) + "','" + value(1) + ");")
+      }
+
+      def close(errorOrNull: Throwable): Unit = {
+        connection.close()
+      }
+    } 
+
+    
     val schema = StructType(
       Array(StructField("CMTE_ID", StringType),
                 StructField("AMNDT_IND", StringType),
@@ -114,7 +94,6 @@ class  KafkaSink(topic:String, servers:String) extends ForeachWriter[(String, St
 	.format("kafka")
  	.option("kafka.bootstrap.servers", "18.205.181.166:9092")
  	.option("subscribe", "data")
-        .option("startingOffsets","earliest")
  	.load()
     
     val df_string = fileStreamDf.selectExpr("CAST(value AS STRING)")
@@ -152,16 +131,38 @@ class  KafkaSink(topic:String, servers:String) extends ForeachWriter[(String, St
     
     dfAlter3.printSchema()
     
+    val url="jdbc:postgresql://postgresgpgsql.c0npzf7zoofq.us-east-1.rds.amazonaws.com:5432/postgreMVP"
+    val user="gpgarner8324"
+    val pwd="carmenniove84!"
+    val writer = new JDBCSink(url, user, pwd)
+
+
+    //val dfGroup1 = dfAlter3.groupBy("STATE").count()
+    
+    /*val query0 = dfGroup1
+      .writeStream
+      .format("console")
+      .outputMode(OutputMode.Append())
+      .start()*/
+
+    val query0 = dfAlter3.select("CITY","STATE")
+      .writeStream
+      .foreach(writer)
+      .outputMode("update")
+      .trigger(ProcessingTime("25 seconds"))
+      .start()
+    query0.awaitTermination()
+
     // val groupies = dfAlter3.groupBy(window($"timestamp", "10 days", "5 days"),$"STATE").count()
     //val groupies = dfAlter3.withWatermark("timestamp", "10 days").groupBy(window($"timestamp", "10 days", "5 days"),$"STATE").count()
     //groupies.printSchema()
-    val query0 = dfAlter3.select("CMTE_ID","AMNDT_IND","RPT_TP","FILE_NUM","NAME","STATE","ZIP_CODE","TRANSACTION_DT","YEAR","timestamp")  
+    /*val query0 = dfAlter3.select("CMTE_ID","AMNDT_IND","RPT_TP","FILE_NUM","NAME","STATE","ZIP_CODE","TRANSACTION_DT","YEAR","timestamp")  
       .writeStream
       .format("console")
       .option("truncate","false")
       .outputMode(OutputMode.Append())
       .start()
-    query0.awaitTermination() 
+    query0.awaitTermination()*/
     //val writer = new KafkaSink("dump","18.205.181.166:9092") 
     
     //val query1 = groupies
