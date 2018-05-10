@@ -19,27 +19,33 @@ import org.apache.spark.sql.ForeachWriter
 import org.apache.kafka.clients.producer._
 import org.apache.kafka.common._
 import org.apache.spark.sql.streaming.ProcessingTime
-
+import org.apache.spark.ml.feature.NGram
 import java.sql.{Array=>SQLArray,_}
+
+import org.apache.spark.ml.feature._
+import org.apache.spark.ml.linalg._
+import org.apache.spark.sql.types._
+
+import scala.collection.mutable
 
 object FileStreamExample {
 
   def main(args: Array[String]): Unit = {
-    //import sparkSession.implicits._
-    //import sqlContext.implicits._
-    //import spark.implicits._
 
     val sparkSession = SparkSession.builder
       .master("spark://18.205.181.166:7077")
       .appName("example")
       .getOrCreate()
+
+    import sparkSession.implicits._
     
-    class  JDBCSink(url:String, user:String, pwd:String) extends org.apache.spark.sql.ForeachWriter[org.apache.spark.sql.Row] {
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////    
+ 
+    class  JDBCSink(url:String, user:String, pwd:String, dbase: String) extends org.apache.spark.sql.ForeachWriter[org.apache.spark.sql.Row] {
       val driver = "org.postgresql.Driver"
       var connection:Connection = _
       var statement:Statement = _
-      
-
+    
       def open(partitionId: Long,version: Long): Boolean = {
         Class.forName(driver)
         connection =java.sql.DriverManager.getConnection(url, user, pwd)
@@ -48,14 +54,13 @@ object FileStreamExample {
       }
 
       def process(value: org.apache.spark.sql.Row): Unit = {
-        statement.executeUpdate("INSERT INTO public.test(col1, col2) " + "VALUES ('" + value(0) + "','" + value(1) + ");")
+        statement.executeUpdate("INSERT INTO public." + dbase +"(name,city_name,state_init,zip_code) " + "VALUES ('" + value(0) + "','" + value(1) + "','" + value(2) + "','" + value(3) +  "');")
       }
 
       def close(errorOrNull: Throwable): Unit = {
         connection.close()
       }
     } 
-
     
     val schema = StructType(
       Array(StructField("CMTE_ID", StringType),
@@ -80,107 +85,193 @@ object FileStreamExample {
                 StructField("MEMO_TEXT", StringType),
 		StructField("SUB_ID", StringType)))
 
-    import sparkSession.implicits._
+    /////////////////////////////////////////////////////////////////////////////////////////////////    
+ 
+    val dfCity = sparkSession.read
+         .format("csv")
+         .option("header", "true") //reading the headers
+         .option("mode", "DROPMALFORMED")
+         .load("hdfs://ec2-18-205-181-166.compute-1.amazonaws.com:9000/user/uscitiesv14.csv")
+    val dfCityUpper = dfCity.withColumn("city",upper($"city"))
 
-    //create stream from folder
-    //val fileStreamDf = sparkSession.readStream
-    //  .option("sep", "|")
-    //  .schema(schema)
-    //  .csv("/home/ubuntu/sandbox/src/main/scala/tmp/")
+    val dfCityUpperConcat = dfCityUpper.withColumn("cityState", concat($"city",lit(" "),$"state_id"))
     
+    val expectedNumItems: Long = 10000 
+    val fpp: Double = 0.005
+
+    val sbf = dfCityUpperConcat.stat.bloomFilter($"cityState", expectedNumItems, fpp)
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+
+    val dfGroundTruth = sparkSession.read
+         .format("csv")
+         .option("header", "true") //reading the headers
+         .option("mode", "DROPMALFORMED")
+         .load("hdfs://ec2-18-205-181-166.compute-1.amazonaws.com:9000/user/base_unique.csv")
+
+    val dfGroundTruthMod = dfGroundTruth.select("NAME","CITY","STATE","ZIP_CODE")
+ 
+    dfGroundTruthMod.show()
+    dfGroundTruthMod.printSchema
+   
+    def splitFunc: (String => Array[String]) = {s => s.split("")}
+    val mySplitFunc = udf(splitFunc)
+    def stringFunc: (mutable.WrappedArray[String] => String) = {s => s.mkString("").replace("   "," ").replace("  ", " ")}
+    val myStringFunc = udf(stringFunc)
+
+    val ngrammable = dfGroundTruthMod
+        .withColumn("NGRAM_NAME",mySplitFunc($"NAME"))
+
+    val ngram = new NGram().setN(3).setInputCol("NGRAM_NAME").setOutputCol("ngrams")
+    val ngramDataFrame = ngram.transform(ngrammable)
+    
+    val ngramDataFrameStr = ngramDataFrame.withColumn("ngramString", myStringFunc($"ngrams"))
+    
+    ngramDataFrameStr.select("ngramString").show()
+    
+    val tokenizer = new Tokenizer().setInputCol("ngramString").setOutputCol("grams")
+    val gramsDf = tokenizer.transform(ngramDataFrameStr)
+    
+    val vocabSize = 1000000
+    val cvModel: CountVectorizerModel = new CountVectorizer().setInputCol("grams").setOutputCol("features").setVocabSize(vocabSize).setMinDF(10).fit(gramsDf)
+    val isNoneZeroVector = udf({v: Vector => v.numNonzeros > 0}, DataTypes.BooleanType)
+
+    val vectorizedDf = cvModel.transform(gramsDf).filter(isNoneZeroVector(col("features"))).select(col("NAME"), col("features"))
+    vectorizedDf.show()
+
+    val mh = new MinHashLSH().setNumHashTables(3).setInputCol("features").setOutputCol("hashValues")
+    val model = mh.fit(vectorizedDf)
+    
+    model.transform(vectorizedDf).show()
+    
+    val threshold = 0.2
+    //model.approxSimilarityJoin(vectorizedDf, vectorizedDf, threshold).filter("distCol != 0").show()
+
+    //val dfHashed = dfGroundTruthMod.withColumn("hash", hash(dfGroundTruthMod.columns.map(col): _*))    
+    //dfHashed.show()
+    //dfNGram.show()
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+
     //create stream from kafka topic data
     val fileStreamDf = sparkSession
 	.readStream
 	.format("kafka")
  	.option("kafka.bootstrap.servers", "18.205.181.166:9092")
- 	.option("subscribe", "data")
+ 	.option("subscribe", "datatwo")
+        .option("maxOffsetsPerTrigger",100)
  	.load()
     
     val df_string = fileStreamDf.selectExpr("CAST(value AS STRING)")
     
     var df = df_string.select(from_json(col("value"),schema).alias("data")).select("data.*")
- 
-    val dfFilter0 = df
+
+    /*val df = sparkSession
+        .read.format("csv")
+        .option("header","true")
+        .option("delimiter", ",")
+        .schema(schema)
+        .load("hdfs://ec2-18-205-181-166.compute-1.amazonaws.com:9000/user/base_unique3.csv")
+    df.show()*/
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+
+    def cityExistFunc: (String => Boolean) = (s => sbf.mightContain(s))
+    def cityNoExistFunc: (String => Boolean) = (s => !sbf.mightContain(s))
+    val myCityNoExistFunc = udf(cityNoExistFunc)
+    val myCityExistFunc = udf(cityExistFunc)
+
+    def dateFunc: (String => String) = {s => substring(s,4)}
+    val myDateFunc = udf(dateFunc)
+    def zipFunc: (String => String) = {s => substring(s,0,5)}
+    val myZipFunc = udf(zipFunc)
+    def nameFunc: (String => String) = {s => s.replace("'","''")}
+    val myNameFunc = udf(nameFunc)
+    def cityFunc: (String => String) = {s => s.replace("'","''").replace("ST. ", "SAINT ") }
+    val myCityFunc = udf(cityFunc)
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+    
+   val dfFilter0 = df
       .filter(col("CMTE_ID")!=="")
       .filter(col("NAME")!=="")
       .filter(col("ZIP_CODE")!=="")
       .filter(col("TRANSACTION_DT")!=="")
       .filter(col("TRANSACTION_AMT")!=="")
       .filter(col("OTHER_ID")==="")
-      .filter($"AMNDT_IND" rlike "[N]|[A]|[T]")
-      .filter($"RPT_TP" rlike "[1][2][C]|[1][2][G]|[1][2][P]|[1][2][R]|[1][2][S]|[3][0][D]|[3][0][G]|[3][0][P]|[3][0][R]|[3][0][S]|[6][0][D]|[A][D][J]|[C][A]|[M][1][0]|[M][1][1]|[M][2]|[M][3]|[M][4]|[M][5]|[M][6]|[M][7]|[M][8]|[M][9]|[M][Y]|[Q][1]|[Q][2]|[Q][3]|[T][E][R]|[Y][E]|[9][0][S]|[9][0][D]|[4][8][H]|[2][4][H]")
-      .filter(col("FILE_NUM")!=="")
+    /*val dfFilter0 = df
+      .filter(col("CMTE_ID").isNotNull())
+      .filter(col("NAME").isNotNull())
+      .filter(col("ZIP_CODE").isNotNull())
+      .filter(col("TRANSACTION_DT").isNotNull())
+      .filter(col("TRANSACTION_AMT").isNotNull())
+      .filter(col("OTHER_ID").isNull())*/
 
-    def dateFunc: (String => String) = {s => substring(s,4)}
-    val myDateFunc = udf(dateFunc)
-    def zipFunc: (String => String) = {s => substring(s,0,5)}
-    val myZipFunc = udf(zipFunc)
-     
     val dfAlter1 = dfFilter0
       .withColumn("ZIP_CODE", myZipFunc(dfFilter0("ZIP_CODE")))
       .withColumn("YEAR", myDateFunc(dfFilter0("TRANSACTION_DT")).cast(IntegerType))
       .withColumn("TRANSACTION_AMT",dfFilter0("TRANSACTION_AMT").cast(IntegerType))
+      .withColumn("NAME",myNameFunc(dfFilter0("NAME")))
+      .withColumn("CITY",myCityFunc(dfFilter0("CITY")))
 
    val dfAlter2 = dfAlter1
       .filter(col("YEAR")<=2018)
       .filter(col("YEAR")>=1980)
 
-    val dfAlter3 = dfAlter2
+   val dfAlter3 = dfAlter2
       .withColumn("timestamp",to_timestamp($"TRANSACTION_DT", "MMddyyyy"))
       .withColumn("TRANSACTION_DT",to_date($"TRANSACTION_DT", "MMddyyyy").alias("date"))
+      .withColumn("CITYSTATE", concat($"CITY", lit(" "), $"STATE"))
+    //val dfCityNoExists = dfAlter3
+    //  .filter(myCityNoExistFunc($"CITYSTATE"))
+    //val dfCityExists = dfAlter3
+    //  .filter(myCityExistFunc($"CITYSTATE"))
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    val ngrammable0 = dfAlter3
+        .withColumn("NGRAM_NAME",mySplitFunc($"NAME"))
+    val ngram0 = new NGram().setN(3).setInputCol("NGRAM_NAME").setOutputCol("ngrams")
+    val ngramDataFrame0 = ngram.transform(ngrammable0)
+    val ngramDataFrameStr0 = ngramDataFrame0.withColumn("ngramString", myStringFunc($"ngrams"))
+    val tokenizer0 = new Tokenizer().setInputCol("ngramString").setOutputCol("grams")
+    val gramsDf0 = tokenizer0.transform(ngramDataFrameStr0)
+
+    val vectorizedDf0 = cvModel.transform(gramsDf0).filter(isNoneZeroVector(col("features"))).select(col("NAME"), col("features"))
+
+    //val mh0 = new MinHashLSH().setNumHashTables(3).setInputCol("features").setOutputCol("hashValues")
+
+
+    //model.approxSimilarityJoin(vectorizedDf, vectorizedDf0, threshold).filter("distCol != 0").show()
+
     
-    dfAlter3.printSchema()
-    
-    val url="jdbc:postgresql://postgresgpgsql.c0npzf7zoofq.us-east-1.rds.amazonaws.com:5432/postgreMVP"
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    val url="jdbc:postgresql://postgresgpgsql.c0npzf7zoofq.us-east-1.rds.amazonaws.com:5432/postgresMVP"
     val user="gpgarner8324"
     val pwd="carmenniove84!"
-    val writer = new JDBCSink(url, user, pwd)
+    val writerNo = new JDBCSink(url, user, pwd, "citynoexist")
+    val writerYes = new JDBCSink(url, user, pwd, "cityexist")
+    val vectorizedQUERY = model.approxSimilarityJoin(vectorizedDf0, vectorizedDf, threshold).filter("distCol != 0")
 
-
-    //val dfGroup1 = dfAlter3.groupBy("STATE").count()
-    
-    /*val query0 = dfGroup1
+    val query = vectorizedQUERY
       .writeStream
       .format("console")
-      .outputMode(OutputMode.Append())
-      .start()*/
+      .start()
+    query.awaitTermination()
 
-    val query0 = dfAlter3.select("CITY","STATE")
+    /*val query0 = dfCityNoExists.select("NAME","CITY","STATE","ZIP_CODE")
       .writeStream
-      .foreach(writer)
+      .foreach(writerNo)
       .outputMode("update")
       .trigger(ProcessingTime("25 seconds"))
       .start()
-    query0.awaitTermination()
 
-    // val groupies = dfAlter3.groupBy(window($"timestamp", "10 days", "5 days"),$"STATE").count()
-    //val groupies = dfAlter3.withWatermark("timestamp", "10 days").groupBy(window($"timestamp", "10 days", "5 days"),$"STATE").count()
-    //groupies.printSchema()
-    /*val query0 = dfAlter3.select("CMTE_ID","AMNDT_IND","RPT_TP","FILE_NUM","NAME","STATE","ZIP_CODE","TRANSACTION_DT","YEAR","timestamp")  
+    val query1 = dfCityExists.select("NAME","CITY","STATE","ZIP_CODE")
       .writeStream
-      .format("console")
-      .option("truncate","false")
-      .outputMode(OutputMode.Append())
-      .start()
-    query0.awaitTermination()*/
-    //val writer = new KafkaSink("dump","18.205.181.166:9092") 
-    
-    //val query1 = groupies
-    //.writeStream
-    //.foreach(writer)
-    //.outputMode("update")
-    //.trigger(ProcessingTime("25 seconds"))
-    //.start()
-    //groupies.select(to_json(struct("window.start","window.end","STATE")).alias("key"),col("count").cast("string").alias("value")).printSchema()
-    /*val query = groupies.select(to_json(struct("window.start","window.end","STATE")).alias("key"),col("count").cast("string").alias("value"))
-      .writeStream
-      .format("kafka")
-      .option("kafka.bootstrap.servers", "localhost:9092")
-      .option("topic", "dump")
-      .option("checkpointLocation", "/home/ubuntu/repo/sandbox/checkpoint")
-      .outputMode("complete")
-      .start()
-    query.awaitTermination()*/
-    //println(query.lastProgress)
+      .foreach(writerYes)
+      .outputMode("update")
+      .trigger(ProcessingTime("25 seconds"))
+      .start()*/
+      
+    //query0.awaitTermination()
+  
   }
 }

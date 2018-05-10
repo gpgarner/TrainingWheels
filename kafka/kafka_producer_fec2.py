@@ -25,7 +25,7 @@ def file_number(i):
 	return str_counter
 
 def main():
-    	producer = KafkaProducer(bootstrap_servers=config.KAFKA_SERVERS,value_serializer= lambda v: json.dumps(v).encode())
+    	producer = KafkaProducer(bootstrap_servers=["localhost:9092"],value_serializer= lambda v: json.dumps(v).encode())
         
 
 	headers = ['CMTE_ID', 'AMNDT_IND', 'RPT_TP', 'TRANSACTION_PGI', 'IMAGE_NUM',       \
@@ -34,17 +34,17 @@ def main():
                    'OTHER_ID', 'TRAN_ID', 'FILE_NUM', 'MEMO_CD', 'MEMO_TEXT', 'SUB_ID'     ]
 	split_counter = len(glob.glob('/home/ubuntu/manip_data/split_*'))
 	
-	
-	for i in range(split_counter):
-		with open('/home/ubuntu/manip_data/split_'+file_number(i)) as f:
-			reader = csv.reader(f, delimiter='|')
+	for j in range(1):
+		for i in range(split_counter):
+			with open('/home/ubuntu/manip_data/split_'+file_number(i)) as f:
+				reader = csv.reader(f, delimiter='|')
 			
-			for row in reader:
-				row = {h:x for h,x in zip(headers,row)}
-				producer.send('data', row)
+				for row in reader:
+					row = {h:x for h,x in zip(headers,row)}
+					producer.send('datatwo', row)
 
 	producer.flush()
-	producer = KafkaProducer(retries=5)
+	producer.close()
                 
 if __name__ == "__main__":
     main()
